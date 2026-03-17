@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Environment (contains DB passwords)
+.env
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Screenshots and test artifacts (unrelated to IdotInfra)
+*.png
+*.mjs
+
+# IDE
+.cursor/
+.vscode/
+
+# Docker volumes (managed by Docker, not in repo)
+db_data/
+wp_data/
