@@ -43,6 +43,10 @@ wp_setup() {
     if [ -f /usr/src/db-export.sql ]; then
         echo "[render] Importing database dump..."
         $WP db import /usr/src/db-export.sql || true
+
+        echo "[render] Replacing localhost URLs with Render URL..."
+        $WP search-replace 'http://localhost:8082' "${RENDER_EXTERNAL_URL:-http://localhost}" \
+            --all-tables --skip-columns=guid || true
     fi
 
     # Basic site options
@@ -63,7 +67,7 @@ for i in $(seq 1 60); do
     if mysqladmin ping -h"${WORDPRESS_DB_HOST%%:*}" \
         -P"${WORDPRESS_DB_PORT:-3306}" \
         -u"$WORDPRESS_DB_USER" \
-        -p"$WORDPRESS_DB_PASSWORD" --silent 2>/dev/null; then
+        -p"$WORDPRESS_DB_PASSWORD" --ssl --silent 2>/dev/null; then
         echo "[render] Database is ready."
         break
     fi

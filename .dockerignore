@@ -1,0 +1,9 @@
+.git
+node_modules
+deploy_staging
+deploy/infinityfree
+oracle-setup
+.env
+.env.*
+*.md
+.github

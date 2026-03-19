@@ -2,6 +2,7 @@ FROM wordpress:latest
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         less \
+        wget \
         default-mysql-client \
     && curl -fsSL https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar \
         -o /usr/local/bin/wp \
