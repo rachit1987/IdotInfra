@@ -4,6 +4,7 @@ services:
     runtime: docker
     dockerfilePath: ./Dockerfile
     plan: free
+    healthCheckPath: /
     envVars:
       - key: WORDPRESS_DB_HOST
         sync: false
