@@ -7,14 +7,21 @@ if [ -n "$PORT" ]; then
         /etc/apache2/sites-available/000-default.conf
 fi
 
-if [ -d /usr/src/idotinfra-theme ]; then
-    mkdir -p /var/www/html/wp-content/themes/idotinfra-theme
-    cp -r /usr/src/idotinfra-theme/* /var/www/html/wp-content/themes/idotinfra-theme/
-    chown -R www-data:www-data /var/www/html/wp-content/themes/idotinfra-theme
-fi
+copy_theme() {
+    while [ ! -f /var/www/html/wp-includes/version.php ]; do sleep 1; done
+    if [ -d /usr/src/idotinfra-theme ]; then
+        mkdir -p /var/www/html/wp-content/themes/idotinfra-theme
+        cp -r /usr/src/idotinfra-theme/* /var/www/html/wp-content/themes/idotinfra-theme/
+        chown -R www-data:www-data /var/www/html/wp-content/themes/idotinfra-theme
+        echo "[render] Theme copied."
+    fi
+}
 
 wp_setup() {
     local WP="wp --allow-root --path=/var/www/html"
+
+    echo "[render] Waiting for WordPress files..."
+    while [ ! -f /var/www/html/wp-load.php ]; do sleep 1; done
 
     echo "[render] Waiting for database..."
     for i in $(seq 1 90); do
@@ -70,7 +77,10 @@ wp_setup() {
     echo "[render] Setup complete."
 }
 
-# Start Apache FIRST so Render health checks pass immediately
+copy_theme &
 wp_setup &
 
-exec apache2-foreground
+# Hand off to the WordPress entrypoint so it copies WP files + creates wp-config.php,
+# then starts Apache. (CMD ["start.sh"] bypasses WP setup because the entrypoint only
+# triggers on "apache2-foreground" as $1 — calling it explicitly here fixes that.)
+exec docker-entrypoint.sh apache2-foreground
