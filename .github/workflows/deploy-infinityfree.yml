@@ -1,0 +1,141 @@
+# Deploy IdotInfra to InfinityFree
+# Add secrets in GitHub: Settings → Secrets and variables → Actions
+
+name: Deploy to InfinityFree
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/**'
+      - 'wp-content/**'
+      - 'db-export.sql'
+      - '.github/workflows/deploy-infinityfree.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SITE_URL: ${{ secrets.SITE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract WordPress files
+        run: |
+          mkdir -p deploy_staging
+          cd deploy/infinityfree/upload-parts
+          for zip in part*.zip; do
+            echo "Extracting $zip..."
+            unzip -o -q "$zip" -d ../../../deploy_staging
+          done
+          cd ../../..
+          ls -la deploy_staging/ | head -20
+
+      - name: Prepare database
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+        run: |
+          SITE="${SITE_URL:-http://idotinfra.infinityfree.me}"
+          sed "s|http://localhost:8082|${SITE}|g" db-export.sql > deploy_staging/idotinfra-db.sql
+          echo "Database prepared for ${SITE}"
+
+      - name: Create wp-config.php
+        env:
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_HOST: ${{ secrets.DB_HOST }}
+        run: |
+          cat > deploy_staging/wp-config.php << 'EOF'
+          <?php
+          define('DB_NAME', 'DB_NAME_PLACEHOLDER');
+          define('DB_USER', 'DB_USER_PLACEHOLDER');
+          define('DB_PASSWORD', 'DB_PASSWORD_PLACEHOLDER');
+          define('DB_HOST', 'DB_HOST_PLACEHOLDER');
+          define('DB_CHARSET', 'utf8mb4');
+          define('DB_COLLATE', '');
+          define('AUTH_KEY', 'G=-nWN_UzoWP5dRP02@g/eOv=)OD~^%+=C}FkG1@>1UHox?W~6KP*-{Z/)mvr&ZV');
+          define('SECURE_AUTH_KEY', ',6{s$|lcoYG S1WU*{R|h-Ds&NLMd-$=Q9<wm|IEh:AYHPegfU+2OlVd;i`Z!r8>');
+          define('LOGGED_IN_KEY', 'N^-~/bcU7A#aT:I.p[PFa,@1!#nF)d$VM.-A9j8r>A1TGIZePBv@q%NTX5[jnDxE');
+          define('NONCE_KEY', 'LV.zs8<62|;WMBfkTKep&34#Q+l>9K=kb$p$rL@6leTP4GR<fjl+Gm%L0+wuhV:3');
+          define('AUTH_SALT', 'wuMr9{q={wJ>VRR!:L],EE/^+x@2[2|v9[yW)?LdIaAZ~[z|r+KX)}6^(IyR8sDp');
+          define('SECURE_AUTH_SALT', 'o-9|aC=KbGhLw.qy$uK%vjjnqyYNExpge|:es*xSNE^r=%f^z.UU4L,-i:($!NI:');
+          define('LOGGED_IN_SALT', 'Fbp G:&O%+9}eiejw<TGmBJ_d.)j87i88H+5f(BAp?As6-*Cu+Tke2cl[I?F91mc');
+          define('NONCE_SALT', 'r{<CU=P)Nl[uR0t-o(/c]hw)RAN]gx[`o4k>JC&Vfl0Td]?L>@b!Am-;5WYDW@|8');
+          $table_prefix = 'wp_';
+          define('WP_DEBUG', false);
+          if (!defined('ABSPATH')) define('ABSPATH', __DIR__ . '/');
+          require_once ABSPATH . 'wp-settings.php';
+          EOF
+          sed -i "s/DB_NAME_PLACEHOLDER/$DB_NAME/g; s/DB_USER_PLACEHOLDER/$DB_USER/g; s|DB_PASSWORD_PLACEHOLDER|$DB_PASSWORD|g; s/DB_HOST_PLACEHOLDER/$DB_HOST/g" deploy_staging/wp-config.php
+
+      - name: Create .htaccess
+        run: |
+          printf '%s\n' '# BEGIN WordPress' \
+            '<IfModule mod_rewrite.c>' \
+            'RewriteEngine On' \
+            'RewriteBase /' \
+            'RewriteRule ^index\.php$ - [L]' \
+            'RewriteCond %{REQUEST_FILENAME} !-f' \
+            'RewriteCond %{REQUEST_FILENAME} !-d' \
+            'RewriteRule . /index.php [L]' \
+            '</IfModule>' \
+            '# END WordPress' > deploy_staging/.htaccess
+
+      - name: Create deploy-db.php
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          SITE_URL: ${{ secrets.SITE_URL }}
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+        run: |
+          KEY="${DEPLOY_KEY:-secret123}"
+          cat > deploy_staging/deploy-db.php << DBPHP
+          <?php
+          if ((\$_GET['key'] ?? '') !== '$KEY') { header('HTTP/1.0 403'); die('Forbidden'); }
+          set_time_limit(300);
+          try {
+            \$pdo = new PDO("mysql:host=$DB_HOST;dbname=$DB_NAME;charset=utf8mb4", "$DB_USER", "$DB_PASSWORD", [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+            \$pdo->exec("SET FOREIGN_KEY_CHECKS=0");
+            foreach (\$pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN) as \$t) \$pdo->exec("DROP TABLE IF EXISTS \\\`\$t\\\`");
+            \$pdo->exec("SET FOREIGN_KEY_CHECKS=1");
+            \$sql = file_get_contents(__DIR__.'/idotinfra-db.sql');
+            foreach (preg_split('/;\\s*\\n/', \$sql) as \$s) { \$s=trim(\$s); if (\$s && substr(\$s,0,2)!=='--' && substr(\$s,0,2)!=='/*') try { \$pdo->exec(\$s); } catch(Exception \$e) {} }
+            \$pdo->exec("UPDATE wp_options SET option_value='$SITE_URL' WHERE option_name IN ('siteurl','home')");
+            \$pdo->exec("UPDATE wp_options SET option_value='idotinfra-theme' WHERE option_name='stylesheet'");
+            \$pdo->exec("UPDATE wp_options SET option_value='astra' WHERE option_name='template'");
+            @unlink(__FILE__); @unlink(__DIR__.'/idotinfra-db.sql');
+            echo 'OK - Delete this file';
+          } catch(Exception \$e) { echo \$e->getMessage(); }
+          DBPHP
+
+      - name: FTP Deploy
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./deploy_staging/
+          server-dir: ${{ secrets.FTP_REMOTE_DIR || 'htdocs/' }}
+
+      - name: Run database import
+        run: |
+          SITE="${{ secrets.SITE_URL }}"
+          KEY="${{ secrets.DEPLOY_KEY }}"
+          echo "Triggering DB import at ${SITE}/deploy-db.php"
+          HTTP=$(curl -s -o /tmp/db-response.txt -w "%{http_code}" "${SITE}/deploy-db.php?key=${KEY}" 2>/dev/null || echo "000")
+          cat /tmp/db-response.txt
+          echo "Response: HTTP $HTTP"
+
+      - name: Verify site
+        run: |
+          SITE="${{ secrets.SITE_URL }}"
+          sleep 3
+          HTTP=$(curl -sL -o /dev/null -w "%{http_code}" "$SITE" 2>/dev/null || echo "000")
+          echo "Site $SITE returned HTTP $HTTP"
+          if [ "$HTTP" = "200" ]; then
+            echo "::notice title=Deployment complete::Site is live at $SITE"
+          fi
