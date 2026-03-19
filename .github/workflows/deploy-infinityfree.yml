@@ -112,14 +112,25 @@ jobs:
           } catch(Exception \$e) { echo \$e->getMessage(); }
           DBPHP
 
+      - name: Validate FTP secrets
+        run: |
+          echo "Checking required secrets..."
+          [ -n "${{ secrets.FTP_SERVER }}" ] || { echo "::error::FTP_SERVER is empty. Use ftpupload.net or ftp.epizy.com (from InfinityFree FTP Details)"; exit 1; }
+          [ -n "${{ secrets.FTP_USERNAME }}" ] || { echo "::error::FTP_USERNAME is empty. Use your cPanel username (e.g. if0_xxxxx)"; exit 1; }
+          [ -n "${{ secrets.FTP_PASSWORD }}" ] || { echo "::error::FTP_PASSWORD is empty"; exit 1; }
+          echo "Secrets OK. Server: ${{ secrets.FTP_SERVER }}"
+
       - name: FTP Deploy
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ${{ secrets.FTP_PROTOCOL || 'ftps' }}
           local-dir: ./deploy_staging/
           server-dir: ${{ secrets.FTP_REMOTE_DIR || 'htdocs/' }}
+          timeout: 180000
+          log-level: verbose
 
       - name: Run database import
         run: |
