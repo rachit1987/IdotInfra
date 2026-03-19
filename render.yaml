@@ -3,12 +3,7 @@ services:
     name: idotinfra
     runtime: docker
     dockerfilePath: ./Dockerfile
-    plan: starter
-    healthCheckPath: /
-    disk:
-      name: wp-uploads
-      mountPath: /var/www/html/wp-content/uploads
-      sizeGB: 1
+    plan: free
     envVars:
       - key: WORDPRESS_DB_HOST
         sync: false
