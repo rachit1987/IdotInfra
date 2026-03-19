@@ -7,19 +7,22 @@
  *   2. Click "New File" > name it "install.php"
  *   3. Paste this ENTIRE code
  *   4. Save
- *   5. Visit: http://idotinfra.infinityfreeapp.me/install.php
+ *   5. Visit: http://YOUR_SITE/install.php
+ *
+ * IMPORTANT: Update the config below for YOUR InfinityFree account before running!
  */
 
 set_time_limit(600);
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
+// ========== CONFIG — Update these for your InfinityFree account ==========
 $GITHUB_BASE = 'https://raw.githubusercontent.com/rachit1987/IdotInfra/main/deploy/infinityfree/upload-parts/';
-$DB_HOST = 'sql100.infinityfree.com';
-$DB_NAME = 'if0_41412021_wordpress';
-$DB_USER = 'if0_41412021';
-$DB_PASS = 'Tarang2026';
-$SITE_URL = 'http://idotinfra.infinityfreeapp.me';
+$DB_HOST = 'sql100.infinityfree.com';   // From cPanel → MySQL Databases
+$DB_NAME = 'if0_41412021_wordpress';    // Your database name
+$DB_USER = 'if0_41412021';              // Your database user
+$DB_PASS = 'Tarang2026';                // Your database password
+$SITE_URL = 'http://idotinfra.infinityfree.me';  // Must match your actual InfinityFree URL
 
 $PARTS = [
     'part1-core.zip',
@@ -275,7 +278,9 @@ if ($step === 3) {
     echo '<div class="s">Activating plugins... ';
     try {
         $plugins = serialize(['contact-form-7/wp-contact-form-7.php' => time()]);
-        $pdo->exec("UPDATE wp_options SET option_value='a:1:{s:36:\"contact-form-7/wp-contact-form-7.php\";i:1;}' WHERE option_name='active_plugins'");
+        $pluginPath = 'contact-form-7/wp-contact-form-7.php';
+$activePlugins = serialize([$pluginPath => time()]);
+$pdo->exec("UPDATE wp_options SET option_value=" . $pdo->quote($activePlugins) . " WHERE option_name='active_plugins'");
         echo '<span class="ok">OK</span>';
         $stepsOk++;
     } catch (PDOException $e) {
